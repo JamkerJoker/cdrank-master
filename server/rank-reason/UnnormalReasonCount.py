@@ -5,8 +5,34 @@ import base64
 from lxml import etree
 import os
 import json
+import platform
 
 from acount import fot_user,fot_pwd
+'''
+更新日志：
+
+2018.9.4
+1.账号独立
+2.加入OCR登录异常处理
+
+2018.9.5
+1.根据系统，选择文件生成路径
+
+2018.9.7
+1.根据本地数据的情况，判断是否需要登录，减少不必要登录
+2.把之前每日单独访问的模式改成智能按时间段访问
+
+2018.9.8
+1.url分解params；
+2.加入get_flight_detail(flightID)函数；
+3.根据传入的 endDate ，以及当前时间生成 max_endDate，
+  避免重复访问无延误原因的日期，避免不必要访问
+4.加入判断更新昨日数据，时间点：当日17点
+
+2018.9.9
+1.修复Linux系统路径问题
+'''
+#根据时间段，生成时间列表
 def dateRange(beginDate, endDate):
     dates = []
     dt = datetime.datetime.strptime(beginDate, "%Y-%m-%d")
@@ -17,20 +43,26 @@ def dateRange(beginDate, endDate):
         date = dt.strftime("%Y-%m-%d")
     return dates
     
-    '''
-def get_date(month=None):
-    today=datetime.date.today()
-    oneday=datetime.timedelta(days=1)
-    yesterday=today-oneday
+#根据 endDate ，生成 max_endDate
+# 17点前获取前天数据，因网站17点后才锁定延误原因
+def max_enddate(endDate):
+    dt = datetime.datetime.now()
+    yesterday = dt + datetime.timedelta(-1)
+    bf_yesterday =  dt + datetime.timedelta(-2)
+    if dt.hour>=17:
+        max_endDate = yesterday.strftime("%Y-%m-%d")
+    else:
+        max_endDate = bf_yesterday.strftime("%Y-%m-%d")
+    return max_endDate
     
-    month_1st=yesterday.replace(day=1)
-    # month_1st=datetime.datetime.strptime(month_1st, "%Y%m%d")
+def get_platform_path():
+    if platform.system()=='Windows':
+        path=''
+    elif platform.system()=='Linux':
+        path='/usr/share/nginx/html/data/'
+    return path
     
-    print(month_1st,yesterday)
-    return month_1st,yesterday
-    '''
-    
-def code_ocr(code_url):
+def code_ocr(code_url,times=0):
     code_rep=s.get(code_url,headers=headers)
     # with open('verify_code.jpg','wb')as f:
         # f.write(code_rep.content)
@@ -41,11 +73,18 @@ def code_ocr(code_url):
     'lang': 'auto',
     'company':''
     }
-    rep=s.post(url,headers=headers,data=post_data)
-    if rep.json().get('errorCode')=='0':
-        verify_code=rep.json().get('lines')[0].get('words')
-        # print(verify_code)
-        return verify_code
+    try:
+        rep=s.post(url,headers=headers,data=post_data)
+        if rep.status_code==200:
+            if rep.json().get('errorCode')=='0':
+                verify_code=rep.json().get('lines')[0].get('words')
+                # print(verify_code)
+                return verify_code
+    except:
+        times=times+1
+        while times<3:
+            return code_ocr(code_url,times=times)
+
 
 def login(n=0):
     login_url='https://flightontime.cn/loginAction.do?method=logIn'
@@ -64,8 +103,8 @@ def login(n=0):
     if rep.status_code==302:
         print('正常统计系统登录成功')
     else:
+        n=+1
         while n<3:
-            n=+1
             return login(n)
         
 def get_flight_info(page,start_day,end_day):
@@ -73,7 +112,12 @@ def get_flight_info(page,start_day,end_day):
         currentpage=page-1
     else:
         currentpage=page
-    url=f'https://flightontime.cn/flightInfoQueryAction.do?method=list&togo={page}&advanceddivdisplay='
+    url='https://flightontime.cn/flightInfoQueryAction.do'
+    params={
+    'method': 'list',
+    'togo': page,
+    'advanceddivdisplay':''
+    }
     post_data={
     'ScheduledDateFrom': start_day.replace('-',''),
     'ScheduledDateTo': end_day.replace('-',''),
@@ -91,7 +135,16 @@ def get_flight_info(page,start_day,end_day):
     'togo': ''
     }
     # print(post_data)
-    rep=s.post(url,headers=headers,data=post_data)
+    rep=s.post(url,headers=headers,params=params,data=post_data)
+    return rep.text
+    
+def get_flight_detail(flightID):
+    url='https://flightontime.cn/flightInfoQueryAction.do'
+    params={
+    'method': 'viewDetail',
+    'id': flightID
+    }
+    rep=s.get(url,headers=headers,params=params)
     # print(rep.text)
     return rep.text
     
@@ -138,35 +191,50 @@ def multi_page(start_day,end_day):
         
 class NewData():
     def __init__(self,date_seg1,date_seg2):
-        self.file='/usr/share/nginx/html/data/UnnormalReason.json'
+        self.file=UnnormalReason_file
         self.date_seg1=date_seg1
         self.date_seg2=date_seg2
         
     def old_data(self):
         if os.path.isfile(self.file):
-        # file为之前日期生成的json文件，rank_data为新抓取的数据
             with open(self.file,'r',encoding='utf-8') as fp:
                 old_data=json.load(fp)
                 old_dates=[x.get('ScheduledDate') for x in old_data]
+                old_dates.sort()
             return old_data,old_dates
         else:
-            return '',''
+            return [],''
             
     def get_new_data(self):
-        total_list=[]
+        # 获取本地数据
         old_data,old_dates=self.old_data()
-        # 获取旧数据
-        if old_data:
-            total_list.extend(old_data)
-        # 获取新数据
         dates=dateRange(self.date_seg1,self.date_seg2)
-        for date in dates:
-            if date not in old_dates:
-                print(f'正在下载{date}数据')
-                data_list=multi_page(date,date)
-                total_list.extend(data_list)
-                with open(self.file,'w',encoding='utf-8') as fp:
-                    json.dump(total_list,fp,ensure_ascii=False)
+        # 获取新数据
+        if not set(old_dates)>=set(dates):
+            login()
+            total_list=old_data
+            for date in dates:
+                if date not in old_dates:
+                    #本地无数据
+                    if not old_dates:
+                        print(f'正在下载{date}——{dates[-1]}正常性数据')
+                        data_list=multi_page(date,dates[-1])
+                    #获取起始日期早于本地数据最早日期
+                    elif date < old_dates[0]:
+                        dt2=datetime.datetime.strptime(old_dates[0],"%Y-%m-%d")+datetime.timedelta(-1)
+                        date2=dt2.strftime("%Y-%m-%d")
+                        print(f'正在下载{date}——{date2}正常性数据')
+                        data_list=multi_page(date,date2)
+                    #获取结束日期晚于本地数据最晚日期
+                    elif date > old_dates[-1]:
+                        print(f'正在下载{date}——{dates[-1]}正常性数据')
+                        data_list=multi_page(date,dates[-1])
+                    total_list.extend(data_list)
+                    with open(self.file,'w',encoding='utf-8') as fp:
+                        json.dump(total_list,fp,ensure_ascii=False)
+                    old_dates=self.old_data()[1]
+        with open(UnnormalReason_file,'r',encoding='utf-8') as fp:
+            total_list=json.load(fp)
         return total_list
         
     
@@ -213,12 +281,23 @@ def reason_count(item_list):
     # print(Reason)
     return Reason
     
+    '''
+#根据时间段，更新延误数据
+def update_unnormal_reason(beginDate,endDate):
+    max_endDate=max_enddate(endDate)
+    print('正常统计系统最新数据日期',max_endDate)
+    NewData(beginDate,max_endDate).get_new_data()
+    '''
+    
     
 ###---对外接口---###
 ##查某航班的某航段的某个时间段内各个延误原因次数
 def flight_reason(CallSign,DepAP,ArrAP,beginDate,endDate):
-    total_list=NewData(beginDate,endDate).get_new_data()
-    new_dates=dateRange(beginDate, endDate)
+    max_endDate=max_enddate(endDate)
+    total_list=NewData(beginDate,max_endDate).get_new_data()
+    # print(total_list)
+    new_dates=dateRange(beginDate,endDate)
+    # print(new_dates)
     new_list=[]
     for item in total_list:
         if item['ScheduledDate'] in new_dates:
@@ -235,13 +314,12 @@ def flight_reason(CallSign,DepAP,ArrAP,beginDate,endDate):
         
 s=requests.Session()
 headers={'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
-login()
+platform_path=get_platform_path()
+UnnormalReason_file=platform_path+'UnnormalReason.json'
+
 if __name__=="__main__":
-    # login()
-    # multi_page()
-    # get_date()
-    # month_data=NewData('2018-08-01','2018-08-31').get_new_data()
-    CallSign,DepAP,ArrAP,beginDate,endDate='EU6661','ZUUU','ZSPD','2018-08-01','2018-09-03'
+    CallSign,DepAP,ArrAP,beginDate,endDate='EU6661','ZUUU','ZSPD','2018-08-01','2018-12-31'
+    # update_unnormal_reason(beginDate,endDate)
     flight_reason(CallSign,DepAP,ArrAP,beginDate,endDate)
     
     

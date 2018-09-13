@@ -230,8 +230,8 @@
                 eastLastData: [],
                 aviationData: [],
                 reasonData: [],
-                orgs: ['华东', '总局'],
-                org: '华东',
+                orgs: ['华东', '总局','东北'],
+                org: '总局',
                 flights: [],
                 flight: '',
                 orgAirports: [],
@@ -345,8 +345,8 @@
             };
         },
         mounted () {
-            fetchEast().then(response => {
-                this.eastData = response.data;
+            fetchAviation().then(response => {
+                this.aviationData = response.data;
                 this.resetInputFields();
                 this.handleSearch();
             });
@@ -361,14 +361,14 @@
         },
         watch: {
             'org': function (data) {
-                if (data === '华东') {
-                    fetchEast().then(response => {
-                        this.eastData = response.data;
+                if (data === '总局') {
+                    fetchAviation().then(response => {
+                        this.aviationData = response.data;
                         this.resetInputFields();
                     });
                 } else {
-                    fetchAviation().then(response => {
-                        this.aviationData = response.data;
+                    fetchEast().then(response => {
+                        this.eastData = response.data;
                         this.resetInputFields();
                     });
                 }
@@ -376,8 +376,6 @@
         },
         methods: {
             Blue () {
-
-
                 if (this.currentb == 3) {
                     this.currentb = 0;
                 } else {
@@ -405,8 +403,6 @@
                     this.currentr += 1;
                 }
             },
-
-
             resetInputFields () {
                 let jsonData = null;
                 let tmpFlights = [];
@@ -792,7 +788,7 @@
         /*border: 1px solid #dcdee2;*/
         /*width: 800px;*/
         height: 100%;
-        font-size: medium;
+        font-size: small;
     }
 
     .list {

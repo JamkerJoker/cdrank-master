@@ -82,11 +82,12 @@
                             score: 'scoreOrange'
                         };
                         this.renderFunOrange ()
-                    } else if (score >= 80 && score <= 84) {
+                    } else if (score >= 80 && score <= 84   ) {
                         cellClassName = {
                             score: 'scoreYellow'
                         };
                         this.renderFuncYellow ()
+
                     } else if (score >= 70 && score <= 79) {
                         cellClassName = {
                             score: 'scoreBlue'
@@ -107,7 +108,24 @@
         mounted () {
         },
         methods: {
-
+            getDay(num, str) {
+                let today = new Date();
+                let nowTime = today.getTime();
+                let ms = 24*3600*1000*num;
+                today.setTime(parseInt(nowTime + ms));
+                let oYear = today.getFullYear();
+                let oMoth = (today.getMonth() + 1).toString();
+                if (oMoth.length <= 1)
+                {
+                    oMoth = '0' + oMoth;
+                }
+                let oDay = today.getDate().toString();
+                if (oDay.length <= 1)
+                {
+                    oDay = '0' + oDay;
+                }
+                return oYear + str + oMoth + str + oDay;
+            },
             renderFuncYellow () {
                 this.$Notice.warning({
                     title: '航班预警等级通知',
@@ -119,7 +137,7 @@
             renderFunOrange () {
                 this.$Notice.warning({
                     title: '航班预警等级通知',
-                    desc: '该航班处于程色预警状态，请注意',
+                    desc: '该航班处于橙色预警状态，请注意',
                     duration: 8
 
                 });
@@ -277,7 +295,7 @@
         color: deepskyblue;
         font-weight: bold;
     }
-    .ivu-table .demo-table-info-row td{
+    .ivu-table .demo-table-info-row td {
         background-color: #2db7f5;
         color: #fff;
     }
