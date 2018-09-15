@@ -28,3 +28,17 @@ export function fetchReason () {
         url: '/data/UnnormalReason.json'
     });
 }
+
+export function fetchNorthEast () {
+    return service({
+        method: 'get',
+        url: '/data/northeast_rank_list.json'
+    });
+}
+
+export function fetchLastNorthEast () {
+    return service({
+        method: 'get',
+        url: '/data/northeast_month_rank.json'
+    });
+}
