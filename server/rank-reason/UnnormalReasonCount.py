@@ -1,4 +1,5 @@
 import datetime
+import time
 import requests
 import random
 import base64
@@ -31,6 +32,12 @@ from acount import fot_user,fot_pwd
 
 2018.9.9
 1.修复Linux系统路径问题
+
+2018.10.29
+1.增加航班正常统计系统登录错误提示
+  明确登录失败提示
+2.登录失败一直重试改为连续等错误两次后等待200秒
+3.有道OCR更换为百度OCR
 '''
 #根据时间段，生成时间列表
 def dateRange(beginDate, endDate):
@@ -62,34 +69,43 @@ def get_platform_path():
         path='/usr/share/nginx/html/data/'
     return path
     
-def code_ocr(code_url,times=0):
+def baidu_ocr(code_url,times=0):
     code_rep=s.get(code_url,headers=headers)
     # with open('verify_code.jpg','wb')as f:
         # f.write(code_rep.content)
     base64_data = base64.b64encode(code_rep.content)
-    url='http://aidemo.youdao.com/ocrapi1'
+    url0='https://cloud.baidu.com/product/ocr/general'
+    url='https://cloud.baidu.com/aidemo'
     post_data={
-    'imgBase': 'data:image/jpeg;base64,'+str(base64_data,'utf-8'),
-    'lang': 'auto',
-    'company':''
+    'type':'commontext',
+    'image': 'data:image/jpeg;base64,'+str(base64_data,'utf-8'),
+    'image_url':''
+    }
+    
+    headers1={
+    'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36',
+    'Referer':'https://cloud.baidu.com/product/ocr/general',
     }
     try:
-        rep=s.post(url,headers=headers,data=post_data)
+        s.get(url0,headers=headers1)
+        rep=s.post(url,headers=headers1,data=post_data)
         if rep.status_code==200:
-            if rep.json().get('errorCode')=='0':
-                verify_code=rep.json().get('lines')[0].get('words')
-                # print(verify_code)
+            if rep.json().get('errno')==0:
+                verify_code=rep.json().get('data').get('words_result')[0].get('words')
                 return verify_code
     except:
         times=times+1
-        while times<3:
-            return code_ocr(code_url,times=times)
+        if times<3:#最多重试三次
+            if times>1:#第二次登录失败等待200秒
+                time.sleep(200)
+            return baidu_ocr(code_url,times=times)
 
 
 def login(n=0):
     login_url='https://flightontime.cn/loginAction.do?method=logIn'
     code_url='https://flightontime.cn/loginAction.do?method=createValidationCode&d=' + str(random.random())
-    verify_code=code_ocr(code_url)
+    code_rep=s.get(code_url,headers=headers)
+    verify_code=baidu_ocr(code_url)
     post_data={
     'name': fot_user,
     'password': fot_pwd,
@@ -98,11 +114,13 @@ def login(n=0):
     'y':str(random.randint(8,23))
     }
     # print(post_data)
-    rep=s.post(login_url,headers=headers,data=post_data,allow_redirects=False)
-    print(rep.status_code)
+    rep=s.post(login_url,headers=headers,data=post_data,allow_redirects=False,verify=False)
     if rep.status_code==302:
         print('正常统计系统登录成功')
     else:
+        print(rep.status_code)
+        print('正常统计系统登录失败，180秒后正在重试')
+        time.sleep(180)
         n=+1
         while n<3:
             return login(n)
@@ -215,6 +233,7 @@ class NewData():
             total_list=old_data
             for date in dates:
                 if date not in old_dates:
+                    data_list=[]
                     #本地无数据
                     if not old_dates:
                         print(f'正在下载{date}——{dates[-1]}正常性数据')
@@ -318,7 +337,7 @@ platform_path=get_platform_path()
 UnnormalReason_file=platform_path+'UnnormalReason.json'
 
 if __name__=="__main__":
-    CallSign,DepAP,ArrAP,beginDate,endDate='EU6661','ZUUU','ZSPD','2018-08-01','2018-12-31'
+    CallSign,DepAP,ArrAP,beginDate,endDate='EU6661','ZUUU','ZSPD','2018-09-28','2018-10-11'
     # update_unnormal_reason(beginDate,endDate)
     flight_reason(CallSign,DepAP,ArrAP,beginDate,endDate)
     

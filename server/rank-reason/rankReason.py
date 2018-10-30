@@ -37,7 +37,8 @@ from UnnormalReasonCount import flight_reason
 3.修复Linux系统路径问题
 
 2018.9.12
-1-3号,最小航班量改成日期，其他改成4
+1.1-3号,最小航班量改成日期，其他改成4
+2.增加东北机场的排名
 '''
 def get_platform_path():
     if platform.system()=='Windows':
