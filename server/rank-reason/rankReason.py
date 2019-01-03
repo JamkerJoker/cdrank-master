@@ -3,8 +3,6 @@ import datetime
 import calendar
 import json
 import os
-import re
-import csv
 import platform
 
 from acount import vf_user,vf_pwd
@@ -39,6 +37,11 @@ from UnnormalReasonCount import flight_reason
 2018.9.12
 1.1-3号,最小航班量改成日期，其他改成4
 2.增加东北机场的排名
+
+2019.1.3
+1.重写时间逻辑，修复跨年导致的bug
+2.修改昨日数据的日期逻辑
+3.东北增加放行正常率
 '''
 
 
@@ -143,15 +146,14 @@ def rank_add_reason(url,start_day,end_day,airport):
                         x.update(reason)
                         new_rank_list.append(x)
                         
-                elif 'east' in url: #华东departRate改名normalRate（已恢复）
-                    x['normalRate']=x['departRate']
-                    del x['departRate']
+                elif 'northeast' in url: #东北地区排名看rate和ranking
+                    x['rate']=x['passRate']
+                    del x['passRate']
                     new_rank_list.append(x)
                     
-                elif 'attention' in url: #东北地区排名看normalRanking
-                    del x['ranking']
-                    x['ranking']=x['normalRanking']
-                    del x['normalRanking']
+                elif 'east' in url: #华东departRate改名normalRate（已恢复）
+                    x['rate']=x['departRate']
+                    del x['departRate']
                     new_rank_list.append(x)
                     
     # print(new_rank_list)
@@ -197,20 +199,21 @@ class New_rank():
             else:
                 self.start_year=year
                 self.start_month=str(month-2).zfill(2)
-            self.url=self.host+"/v1/east/index?token="+rank_token
+            # self.url=self.host+"/v1/east/index?token="+rank_token
             
         if tag=='aviation':
             self.airport_list=aviation_airport
             self.start_year=year
             self.start_month=str(month).zfill(2)# 全国从当月1号开始统计
-            self.url=self.host+"/v1/aviation/index?token="+rank_token
+            # self.url=self.host+"/v1/aviation/index?token="+rank_token
         
         if tag=='northeast':
             self.airport_list=northeast_airport
             self.start_year=year
             self.start_month=str(month).zfill(2)# 东北从当月1号开始统计
-            self.url=self.host+"/v1/attention/index?token="+rank_token
+            # self.url=self.host+"/v1/northeast/index?token="+rank_token
             
+        self.url=self.host+"/v1/"+self.tag+"/index?token="+rank_token
         self.file=platform_path+self.tag+'_rank_list.json'
         self.file_month=platform_path+self.tag+'_month_rank.json'
         
@@ -233,8 +236,10 @@ class New_rank():
                 total_rank_list.update(rank_list)
                 
                 # 更换前一日数据
-                end_day2=f'{self.stop_year}-{self.stop_month}-{str(x-1).zfill(2)}'
-                rank_list=get_day_rank_list(self.url,self.airport_list,self.start_day,end_day2)
+                yesterday=datetime.datetime.strptime(end_day,"%Y-%m-%d")+datetime.timedelta(days=-1)
+                yesterday_str=yesterday.strftime("%Y-%m-%d")
+                
+                rank_list=get_day_rank_list(self.url,self.airport_list,self.start_day,yesterday_str)
                 total_rank_list.update(rank_list)
                 
                 with open(self.file,'w',encoding='utf-8') as fp:
@@ -284,11 +289,6 @@ if __name__=='__main__':
         
         east_rank_all=New_rank('northeast').get_new_rank()
         east_rank_all=New_rank('northeast').get_month_rank()
-
         
         
         
-
-    
-    
-    
