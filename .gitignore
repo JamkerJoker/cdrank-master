@@ -3,5 +3,9 @@
 /client/rank/dist
 /server/rank-reason/acount.py
 server/rank-reason/aviation_rank_list.json
+server/rank-reason/east_rank_list.json
 server/rank-reason/UnnormalReason.json
-server/rank-reason/json_xlsx.py
+server/rank-reason/northeast_month_rank.json
+server/rank-reason/northeast_rank_list.json
+server/rank-reason/east_month_rank.json
+*.pyc

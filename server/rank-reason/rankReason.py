@@ -1,5 +1,5 @@
 import requests
-import time
+import datetime
 import calendar
 import json
 import os
@@ -40,6 +40,9 @@ from UnnormalReasonCount import flight_reason
 1.1-3号,最小航班量改成日期，其他改成4
 2.增加东北机场的排名
 '''
+
+
+# 根据Windows或Linux系统，定文件生成路径
 def get_platform_path():
     if platform.system()=='Windows':
         path=''
@@ -47,45 +50,33 @@ def get_platform_path():
         path='/usr/share/nginx/html/data/'
     return path
     
-def get_date(month=None):
-    now_=time.localtime(time.time())
-    now_year=now_.tm_year
-    now_month=now_.tm_mon
-    now_date=now_.tm_mday
-    now_hour=now_.tm_hour
-    # print(now_year,now_month,now_date)
-    year=now_year
-    if not month:
-        month=now_month
-    elif int(month)>now_month:
-        print('输入月有误')
-        return None
-    if month==now_month:
-        if now_date==1:
-            # 1号选定日期为上月，最后一天
-            month=now_month-1
-            max_day=calendar.monthrange(year,month)[1]
-            # print('本月数据还未统计，无法获取，查找上月数据')
-            if now_hour<5:
-                # 1号1700前选定日期为上月，倒数第二天
-                max_day=max_day-1
-        elif now_date==2:
-            # 2号1700前，选定日期为上月最后一天
-            if now_hour<5:
-                month=now_month-1
-                max_day=max_day=calendar.monthrange(year,month)[1]
-            else:
-                max_day=now_date-1
-        else:
-            max_day=now_date-1
-            if now_hour<5:
-                max_day=max_day-1
-    else:
-        max_day=calendar.monthrange(year,month)[1]
-    # print(year,month,max_day)
+def get_date():
+    target_day=datetime.datetime.now()+datetime.timedelta(hours=-30)
+    year,month,max_day=target_day.year,target_day.month,target_day.day
     return year,month,max_day
-        
-        
+    
+##根据时间段，生成月份列表
+def monthRange(beginDate,endDate):
+    dates = []
+    dt = datetime.datetime.strptime(beginDate, "%Y-%m")
+    date = beginDate[:]
+    while date <= endDate:
+        if date not in dates:
+            dates.append(date)
+        dt = dt + datetime.timedelta(days=1)
+        date = dt.strftime("%Y-%m")
+    return dates
+    
+#根据时间段，生成日期列表
+def dateRange(beginDate,endDate):
+    dates = []
+    dt = datetime.datetime.strptime(beginDate, "%Y-%m-%d")
+    date = beginDate[:]
+    while date <= endDate:
+        dates.append(date)
+        dt = dt + datetime.timedelta(1)
+        date = dt.strftime("%Y-%m-%d")
+    return dates
     
 def login(n=0):
     login_url='http://fisc.variflight.com/v1/user/login'
@@ -171,13 +162,11 @@ def get_day_rank_list(url,airport_list,start_day,end_day):
     rank_dict={}
     rank_list=[]
     for airport in airport_list:
-        # rank=get_airport_day_rank(url,start_day,end_day,airport)
         rank=rank_add_reason(url,start_day,end_day,airport)
         if rank:
             rank_list.append(rank)
     rank_dict[end_day]=rank_list
-    # print(rank_list,'\n')
-    # print(rank_dict)
+
     return rank_dict
     
 def old_rank(file):
@@ -202,22 +191,32 @@ class New_rank():
         self.tag=tag
         if tag=='east':
             self.airport_list=east_airport
-            self.start_month=str(month-2).zfill(2)# 华东从上上月1号开始统计
+            if month<=2:# 华东从上上月1号开始统计
+                self.start_year=year-1
+                self.start_month=str(month+12-2).zfill(2)
+            else:
+                self.start_year=year
+                self.start_month=str(month-2).zfill(2)
+            self.url=self.host+"/v1/east/index?token="+rank_token
+            
         if tag=='aviation':
             self.airport_list=aviation_airport
+            self.start_year=year
             self.start_month=str(month).zfill(2)# 全国从当月1号开始统计
-        self.url=self.host+"/v1/"+self.tag+"/index?token="+rank_token
+            self.url=self.host+"/v1/aviation/index?token="+rank_token
         
         if tag=='northeast':
             self.airport_list=northeast_airport
+            self.start_year=year
             self.start_month=str(month).zfill(2)# 东北从当月1号开始统计
             self.url=self.host+"/v1/attention/index?token="+rank_token
             
         self.file=platform_path+self.tag+'_rank_list.json'
         self.file_month=platform_path+self.tag+'_month_rank.json'
-        self.stop_month=str(month).zfill(2)
-        self.start_day=f'{year}-{self.start_month}-01'
         
+        self.stop_year=str(year)
+        self.stop_month=str(month).zfill(2)
+        self.start_day=f'{self.start_year}-{self.start_month}-01'
         
     def get_new_rank(self):
         total_rank_list={}
@@ -227,16 +226,14 @@ class New_rank():
             total_rank_list.update(old_rank_data)
         # 获取新数据
         for x in range(1,max_day+1):
-            y=str(x).zfill(2)
-            end_day=f'{year}-{self.stop_month}-{y}'
+            end_day=f'{self.stop_year}-{self.stop_month}-{str(x).zfill(2)}'
             if end_day not in old_rank_date:
                 print(f'正在下载{end_day}_{self.tag}数据')
                 rank_list=get_day_rank_list(self.url,self.airport_list,self.start_day,end_day)
                 total_rank_list.update(rank_list)
                 
                 # 更换前一日数据
-                z=str(x-1).zfill(2)
-                end_day2=f'{year}-{self.stop_month}-{z}'
+                end_day2=f'{self.stop_year}-{self.stop_month}-{str(x-1).zfill(2)}'
                 rank_list=get_day_rank_list(self.url,self.airport_list,self.start_day,end_day2)
                 total_rank_list.update(rank_list)
                 
@@ -249,17 +246,20 @@ class New_rank():
         old_rank_data=old_rank(self.file_month)[0]
         if old_rank_data:
             total_rank_list.update(old_rank_data)
-        for m in [month-2,month-1,month]:
-            start_date1=f'{year}-{str(m).zfill(2)}-01'
-            stop_day1=calendar.monthrange(year,m)[1]
-            stop_date1=f'{year}-{str(m).zfill(2)}-{stop_day1}'
-            print(f'正在下载{start_date1}_{stop_date1}_{self.tag}数据')
-            rank_list=get_day_rank_list(self.url,self.airport_list,start_date1,stop_date1)
+        for year_month in monthRange(self.start_day[:7],target_day[:7]):
+            start_date2=f'{year_month}-01'
+            year=int(year_month[:4])
+            month=int(year_month[-2:])
+            stop_day2=calendar.monthrange(year,month)[1]
+            stop_date2=f'{year_month}-{stop_day2}'
+            
+            print(f'正在下载{start_date2}_{stop_date2}_{self.tag}数据')
+            rank_list=get_day_rank_list(self.url,self.airport_list,start_date2,stop_date2)
             # print(rank_list)
             total_rank_list.update(rank_list)
             with open(self.file_month,'w',encoding='utf-8') as fp:
                 json.dump(total_rank_list,fp,ensure_ascii=False)
-        
+            
                 
 s=requests.Session()
 headers={'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/63.0.3239.132 Safari/537.36'}
@@ -274,11 +274,7 @@ northeast_airport=["ZYHB","ZYCC","ZYTX","ZYTL"]
 if __name__=='__main__':
     rank_token=login()
     if rank_token:
-        set_month=''
-        # set_month=input('输入需要的月份，不输入则为当月,按回车确认:\n')
-        if set_month:
-            set_month=int(set_month)
-        year,month,max_day=get_date(set_month)
+        year,month,max_day=get_date()
         target_day=f'{year}-{str(month).zfill(2)}-{str(max_day).zfill(2)}'
         print(target_day,'\n')
         east_rank_all=New_rank('east').get_new_rank()
