@@ -42,6 +42,9 @@ from UnnormalReasonCount import flight_reason
 1.重写时间逻辑，修复跨年导致的bug
 2.修改昨日数据的日期逻辑
 3.东北增加放行正常率
+
+2019.1.15
+1.统计排名60名以内改成300名以内
 '''
 
 
@@ -130,7 +133,7 @@ def rank_add_reason(url,start_day,end_day,airport):
     rank_list=get_airport_day_rank(url,start_day,end_day,airport)
     if rank_list:
         for x in rank_list:
-            if x['ranking']<=60: #取排名60以内的数据
+            if x['ranking']<=300: #取排名300以内的数据
                 x['startDay']=start_day
                 x['endDay']=end_day
                 x['flight']=f"{x['fnum']} {x['forg']}-{x['fdst']}"
